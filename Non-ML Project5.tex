@@ -1,0 +1,89 @@
+\documentclass[12pt]{article}
+
+%load package
+\usepackage{graphicx}
+\usepackage{tabularx}
+\usepackage{fontenc}
+\usepackage{tikz}
+
+\newcommand{\department}{Department of Computer Science}
+\newcommand{\degree}{Master Degree in Computer Science}
+\newcommand{\thesistitle}{Non-ML Project 5, Computational Mathematics}
+\newcommand{\candidatename}{Pan Zhang}
+\newcommand{\email}{p.zhang@studenti.unipi.it}
+%\newcommand{\supervisorA}{XXX}
+%\newcommand{\supervisorB}{XXX}
+
+\begin{document}
+
+\begin{titlepage}
+    \begin{figure}[htb]
+        \centering
+        \includegraphics[width=0.9\textwidth]{images/marchio_unipi_pant541.png}
+    \end{figure}
+
+    \begin{center}
+
+    %Department
+    \vspace{-0.5cm}
+    \Large
+    \textsc{\department}\\
+    
+    %Degree
+    \vspace{0.3cm}
+    \large
+    \textbf{\textsc{\degree}}\\
+    
+    %Title
+    \vspace{1cm}
+    \Large
+    \textbf{\textsc{\thesistitle}}
+    \vspace{1.5cm}
+    
+    %Candidate name
+    \textbf{\textit{\candidatename}}\\
+
+    %email
+    \textbf{\textit{\email}}
+
+    % %Candidate and Supervisisor(s)
+    % \begin{tabularx}{1\textwidth}
+    %     {>{\raggedright\arraybackslash\normalsize}X>{\raggedleft\arraybackslash\normalsize}X}
+    %     Candidate & Supervisors \\
+    %     \textbf{\textit{\candidatename}} & \textbf{\textit{\supervisorA}} \\
+    %     \textbf{\textit{}} & \textbf{\textit{\supervisorB}} \\
+    %     %\textbf{\textit{}} & \textbf{\textit{\supervisorC}} \\
+    % \end{tabularx}
+    
+    \vfill
+    \vspace{0.5cm}
+    
+    %Year\\
+    \textbf{\textsc{A.Y. 2024-2025}}\\
+
+\end{center}
+
+
+\tikz[remember picture,overlay] \node[opacity=0.1,inner sep=0pt] [yshift=-5cm] at (current page.center){\includegraphics[width=15cm]{images/cherubino_black.eps}};
+\end{titlepage}
+
+\LARGE\tableofcontents
+\newpage
+
+\section{Introdution}
+
+\section{Deflected subgradient Analysis}
+
+\section{Implementation}
+
+\section{Results}
+
+\section{Code description}
+
+\section{References}
+
+\section{A Appendix A: Updates derivations }
+
+\section{B Appendix B: subgradient computation }
+
+\end{document}
