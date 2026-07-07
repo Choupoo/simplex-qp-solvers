@@ -69,7 +69,7 @@ d_k = \alpha_k g_k + (1-\alpha_k)d_{k-1},
 ```
 
 ```math
-\lambda_{k+1} = \operatorname{proj}_{B_\rho}(\lambda_k - \nu_k d_k),
+\lambda_{k+1} = \mathrm{proj}_{B_\rho}(\lambda_k - \nu_k d_k),
 \qquad
 \rho = 2\|R\|_F\sqrt{m}.
 ```
