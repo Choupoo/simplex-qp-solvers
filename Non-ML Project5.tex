@@ -1,18 +1,89 @@
 \documentclass[12pt]{article}
 
 %load package
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+% \usepackage{mathpazo}       % Reverted to Computer Modern
+\usepackage[margin=1in]{geometry} % Better margins
+\usepackage{microtype}      % Better typography
+\usepackage{amsmath, amssymb} % Better math
+\usepackage{booktabs}       % Better tables
 \usepackage{graphicx}
 \usepackage{tabularx}
-\usepackage{fontenc}
 \usepackage{tikz}
+\usepackage{fancyhdr}       % Headers
+\usepackage[hidelinks]{hyperref}       % Clickable links with no visual borders
+\usepackage{listings}
+\usepackage{xcolor}
+\usepackage{float}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+
+\algrenewcommand\algorithmiccomment[1]{\quad$\triangleright$\ #1}
+\algrenewcommand\algorithmicrequire{\textbf{Input:}}
+\algrenewcommand\algorithmicensure{\textbf{Output:}}
+% A non-floating algorithm environment that may break across pages.
+\makeatletter
+\newenvironment{breakablealgorithm}
+{%
+  \par
+  \addvspace{\topsep}
+  \refstepcounter{algorithm}%
+  \hrule height 0.8pt depth 0pt
+  \kern 2pt
+  \renewcommand{\caption}[2][\relax]{%
+    {\raggedright
+     \textbf{\ALG@name~\thealgorithm}\ ##2\par}%
+    \ifx\relax##1\relax
+      \addcontentsline{loa}{algorithm}
+      {\protect\numberline{\thealgorithm}##2}%
+    \else
+      \addcontentsline{loa}{algorithm}
+      {\protect\numberline{\thealgorithm}##1}%
+    \fi
+    \kern 2pt
+    \hrule
+    \kern 2pt
+  }%
+}
+{%
+  \kern 2pt
+  \hrule
+  \par
+  \addvspace{\topsep}
+}
+\makeatother
+
+
+\lstset{
+  basicstyle=\ttfamily\small,
+  breaklines=true,
+  columns=fullflexible,
+  frame=single,
+  captionpos=b
+}
+
+
+% Header setup
+\pagestyle{fancy}
+\fancyhf{}
+\fancyfoot[C]{\thepage}
+\renewcommand{\headrulewidth}{0pt}
 
 \newcommand{\department}{Department of Computer Science}
 \newcommand{\degree}{Master Degree in Computer Science}
-\newcommand{\thesistitle}{Non-ML Project 5, Computational Mathematics}
+\newcommand{\thesistitle}{Non-ML Project 5}
 \newcommand{\candidatename}{Pan Zhang}
 \newcommand{\email}{p.zhang@studenti.unipi.it}
+\newcommand{\R}{\mathbb{R}}
+\newcommand{\Kset}{\mathcal{K}}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\nnz}{nnz}
+\DeclareMathOperator{\proj}{proj}
 %\newcommand{\supervisorA}{XXX}
 %\newcommand{\supervisorB}{XXX}
+\newcommand{\ReportAssets}{code/report_assets}
+\graphicspath{{code/report_assets/figures/}}
 
 \begin{document}
 
@@ -59,7 +130,7 @@
     \vspace{0.5cm}
     
     %Year\\
-    \textbf{\textsc{A.Y. 2024-2025}}\\
+    \textbf{\textsc{A.Y. 2025-2026}}\\
 
 \end{center}
 
@@ -67,23 +138,1699 @@
 \tikz[remember picture,overlay] \node[opacity=0.1,inner sep=0pt] [yshift=-5cm] at (current page.center){\includegraphics[width=15cm]{images/cherubino_black.eps}};
 \end{titlepage}
 
-\LARGE\tableofcontents
+\pagenumbering{gobble}
+\tableofcontents
 \newpage
+\pagenumbering{arabic}
 
-\section{Introdution}
+\section{Introduction}
+Let $I_1,\ldots,I_m$ be pairwise disjoint subsets whose union is $\{1,\ldots,n\}$.  The feasible set is the Cartesian product of simplices
+\begin{equation}
+\Kset = \left\{x\in\R^n : \sum_{i\in I_k}x_i=1 \; (k=1,\ldots,m),\; x_i\ge 0 \; (i=1,\ldots,n)\right\}.
+\end{equation}
+The primal problem is
+\begin{equation}
+\tag{P}
+\min_{x\in\Kset} f(x)=x^TQx+q^Tx,
+\qquad Q\succeq 0.
+\end{equation}
+The set $\Kset$ is nonempty, compact and convex.  Since $Q\succeq0$, $f$ is convex and continuously differentiable, with
+\begin{equation}
+\nabla f(x)=2Qx+q.
+\end{equation}
+Therefore, an optimal solution exists. Since the problem is convex, the first-order optimality conditions are also sufficient for global optimality~\cite{boyd2004convex}.
 
-\section{Deflected subgradient Analysis}
+\subsection{Blockwise KKT condition}
+For a given feasible $x$, define $g=\nabla f(x)$.  On block $I_k$, the normal cone of the simplex gives the condition
+\begin{equation}
+ g_i \ge \tau_k \quad (i\in I_k),
+ \qquad x_i(g_i-\tau_k)=0 \quad (i\in I_k),
+\end{equation}
+for some scalar $\tau_k$.  Equivalently, positive variables in the same block must have equal minimum gradient, while zero variables may have larger gradient.  The implementation reports the residual
+\begin{equation}
+\max_k \max_{i\in I_k} |x_i(g_i-\min_{j\in I_k}g_j)|
+\end{equation}
+combined with feasibility residuals for block sums and nonnegativity.  This is the residual used to verify that A1 and A2 solve the same problem up to numerical tolerance.
 
-\section{Implementation}
+\section{A1: Lagrangian dual decomposition}
+\subsection{Equivalent factorized model}
+Because $Q\succeq0$, write $Q=R^TR$.  In the experiments the instances are generated directly through $R$.  When \(Q\) is provided directly, the implementation uses a symmetric
+eigenvalue decomposition $Q=V\operatorname{diag}(\sigma)V^T$ and sets
+\begin{equation}
+R=\operatorname{diag}(\sqrt{\sigma_i})V_+^T,
+\label{eq:psd-factorization}
+\end{equation}
+where only eigenvalues larger than a numerical tolerance are retained.  The objective becomes
+\begin{equation}
+ x^TQx+q^Tx=\|Rx\|_2^2+q^Tx.
+\end{equation}
+Introduce a linking variable $y\in\R^r$ and rewrite (P) as
+\begin{equation}
+\tag{P$_R$}
+\min_{x\in\Kset,\;y\in\R^r}\; \|y\|_2^2+q^Tx
+\quad\text{s.t.}\quad y=Rx.
+\end{equation}
+This formulation is equivalent to (P).  The constraint $y=Rx$ is the only coupling between the quadratic term and the simplex variables, and is therefore a natural target for Lagrangian relaxation.
 
-\section{Results}
+\subsection{Dualizing the linking equation}
+Use a free multiplier $\lambda\in\R^r$ for $Rx-y=0$.  The Lagrangian is
+\begin{equation}
+L(x,y,\lambda)=\|y\|_2^2+q^Tx+\lambda^T(Rx-y).
+\end{equation}
+For fixed $\lambda$, minimization over $y$ is explicit:
+\begin{equation}
+\min_y \; \|y\|_2^2-\lambda^Ty
+= -\frac14\|\lambda\|_2^2,
+\qquad y(\lambda)=\frac12\lambda.
+\label{eq:y-subproblem}
+\end{equation}
+The remaining $x$-subproblem is linear over a product of simplices:
+\begin{equation}
+\min_{x\in\Kset} (q+R^T\lambda)^Tx.
+\label{eq:x-subproblem}
+\end{equation}
+It separates by blocks.  If
+\begin{equation}
+ j_k(\lambda)\in\argmin_{i\in I_k}\{q_i+(R^T\lambda)_i\},
+\label{eq:block-oracle}
+\end{equation}
+then an exact minimizer is the vertex $x(\lambda)$ defined by $x_{j_k}=1$ for every block and all other entries equal to zero.  Thus the dual function is
+\begin{equation}
+\psi(\lambda)
+= -\frac14\|\lambda\|_2^2
++\sum_{k=1}^m \min_{i\in I_k}\{q_i+(R^T\lambda)_i\}.
+\label{eq:dual}
+\end{equation}
+This is a finite concave nonsmooth function on $\R^r$.  A supergradient is
+\begin{equation}
+ s(\lambda)=Rx(\lambda)-\frac12\lambda.
+\label{eq:supergradient}
+\end{equation}
+Indeed, for any $\mu$, the definition of $x(\lambda)$ and $y(\lambda)$ as minimizers of $L(\cdot,\cdot,\lambda)$ gives
+\begin{align}
+\psi(\mu)&\le L(x(\lambda),y(\lambda),\mu) \\
+&= L(x(\lambda),y(\lambda),\lambda) + (\mu-\lambda)^T(Rx(\lambda)-y(\lambda)) \\
+&= \psi(\lambda)+(\mu-\lambda)^Ts(\lambda),
+\end{align}
+which is exactly the supergradient inequality for a concave function.  The Lagrangian dual problem is
+\begin{equation}
+\tag{D}
+\max_{\lambda\in\R^r}\psi(\lambda).
+\end{equation}
+Since (PR) is convex, the linking constraints are affine, and the product of simplices has a nonempty relative interior, the relative-interior constraint qualification holds. Strong duality therefore applies~\cite{boyd2004convex}, and consequently \[ \max(D)=\min(P). \]
+\subsection{A target-value deflected subgradient method}
+To cast the dual problem in the minimization framework of Theorem 4.6 of d'Antonio and Frangioni~\cite[p.~382]{dantoniofrangioni}, we rewrite the dual maximization problem as
+\begin{equation}
+\min_{\lambda\in\R^r}\Phi(\lambda),
+\qquad
+\Phi(\lambda):=-\psi(\lambda).
+\label{eq:phi-problem}
+\end{equation}
+Using the expression of the dual function in~\eqref{eq:dual},
+\begin{equation}
+\Phi(\lambda)
+=\frac14\|\lambda\|^2
+-\sum_{k=1}^m\min_{i\in I_k}
+\left\{q_i+(R^T\lambda)_i\right\}.
+\label{eq:phi}
+\end{equation}
+The function $\Phi$ is finite, strongly convex and coercive.  For a fixed multiplier $\lambda$, let $x(\lambda)$ be any exact solution of the blockwise Lagrangian subproblem. Then
+\begin{equation}
+g(\lambda)
+=-s(\lambda)
+=\frac12\lambda-Rx(\lambda)
+\in\partial\Phi(\lambda)
+\label{eq:phi-subgradient}
+\end{equation}
+is an exact subgradient of $\Phi$.
 
-\section{Code description}
+One of the assumptions of Theorem~4.6 is that the search directions are uniformly bounded. Rather than assuming that the multiplier sequence remains in a bounded region, the algorithm explicitly projects every iterate onto a ball guaranteed to contain the unconstrained dual optimum.
 
-\section{References}
+Define
+\begin{equation}
+\rho=2\|R\|_F\sqrt m,
+\qquad
+B_\rho=\{\lambda\in\R^r:\|\lambda\|\le\rho\}.
+\label{eq:dual-ball}
+\end{equation}
+Restricting the dual problem to $B_\rho$ does not change its optimal solution or optimal value. Indeed, since $\Phi$ is strongly convex and coercive, it has a unique unconstrained minimizer $\lambda^*$.
 
-\section{A Appendix A: Updates derivations }
+To characterize the optimality condition, observe that
+\[
+\Phi(\lambda)
+=\frac14\|\lambda\|^2
+-\min_{x\in\Kset}(q+R^T\lambda)^Tx.
+\]
+By the subdifferential formula for a pointwise maximum of affine functions,
+\begin{equation}
+\partial\Phi(\lambda)
+=\frac12\lambda
+-R\,\operatorname{conv}\left(
+\argmin_{x\in\Kset}(q+R^T\lambda)^Tx
+\right).
+\label{eq:phi-subdifferential}
+\end{equation}
+Therefore, the optimality condition $0\in\partial\Phi(\lambda^*)$ implies that there exists
+\[
+\widehat x\in
+\operatorname{conv}\left(
+\argmin_{x\in\Kset}(q+R^T\lambda^*)^Tx
+\right)
+\subseteq\Kset
+\]
+such that
+\[
+0=\frac12\lambda^*-R\widehat x.
+\]
+Equivalently,
+\begin{equation}
+\lambda^*=2R\widehat x.
+\label{eq:lambda-opt-representation}
+\end{equation}
+For every $x\in\Kset$, each block belongs to a simplex and hence
+\[
+\|x_{I_k}\|_2\le\|x_{I_k}\|_1=1.
+\]
+Consequently,
+\[
+\|x\|^2
+=\sum_{k=1}^m\|x_{I_k}\|^2
+\le\sum_{k=1}^m\|x_{I_k}\|_1^2
+=m.
+\]
+Using~\eqref{eq:lambda-opt-representation},
+\begin{equation}
+\|\lambda^*\|
+\le2\|R\|_2\|\widehat x\|
+\le2\|R\|_2\sqrt m
+\le2\|R\|_F\sqrt m
+=\rho.
+\label{eq:lambda-opt-bound}
+\end{equation}
+Thus $\lambda^*\in B_\rho$, so the restriction to $B_\rho$ leaves the optimum unchanged. The orthogonal projection onto the ball is explicit:
+\begin{equation}
+\proj_{B_\rho}(z)=
+\begin{cases}
+z,&\|z\|\le\rho,\\[1mm]
+\dfrac{\rho}{\|z\|}z,&\|z\|>\rho.
+\end{cases}
+\label{eq:ball-projection}
+\end{equation}
 
-\section{B Appendix B: subgradient computation }
+The method uses the diminishing and square-summable stepsize
+\begin{equation}
+\nu_k=\frac{\nu_0}{k^p},
+\qquad \nu_0>0,
+\qquad \frac12<p\le1.
+\label{eq:diminishing-step}
+\end{equation}
+This choice satisfies
+\begin{equation}
+\sum_{k=1}^{\infty}\nu_k=\infty,
+\qquad
+\sum_{k=1}^{\infty}\nu_k^2<\infty,
+\label{eq:step-condition}
+\end{equation}
+which is condition~(4.1) in d'Antonio and Frangioni~\cite[p.~375]{dantoniofrangioni}.
+
+Let
+\begin{equation}
+\Phi_k=\Phi(\lambda_k),
+\qquad
+\Phi_{\mathrm{ref}}^k=\min_{1\le j\le k}\Phi_j
+\label{eq:record-phi}
+\end{equation}
+denote the current value and the best value obtained up to iteration $k$. Define
+\begin{equation}
+\delta_k=\frac{\delta_0}{k^\eta},
+\qquad \delta_0>0,
+\qquad \eta>0,
+\qquad
+\Phi_{\mathrm{lev}}^k=\Phi_{\mathrm{ref}}^k-\delta_k.
+\label{eq:target-level}
+\end{equation}
+Since $\delta_k>0$ and $\delta_k\to0$, threshold condition~(4.16) of d'Antonio and Frangioni~\cite[p.~381]{dantoniofrangioni} is satisfied.
+
+At the first iteration, set $\alpha_1=1$ and $d_1=g_1$. For $k\ge2$, define
+\begin{equation}
+\zeta_k=
+\frac{\nu_{k-1}\|d_{k-1}\|^2}
+{\Phi_k-\Phi_{\mathrm{lev}}^k+\nu_{k-1}\|d_{k-1}\|^2}.
+\label{eq:zeta}
+\end{equation}
+Because
+\[
+\Phi_k-\Phi_{\mathrm{lev}}^k
+=\Phi_k-\Phi_{\mathrm{ref}}^k+\delta_k>0,
+\]
+the denominator is positive and $0\le\zeta_k\le1$. The implementation selects
+\begin{equation}
+\alpha_k=\max\{\alpha_{\min},\zeta_k\},
+\qquad 0<\alpha_{\min}\le1,
+\label{eq:alpha}
+\end{equation}
+and constructs the deflected direction
+\begin{equation}
+d_k=\alpha_kg_k+(1-\alpha_k)d_{k-1}.
+\label{eq:deflected-direction}
+\end{equation}
+Since both $\alpha_{\min}$ and $\zeta_k$ belong to $[0,1]$,
+\[
+0\le\zeta_k\le\alpha_k\le1.
+\]
+Thus~\eqref{eq:alpha}--\eqref{eq:deflected-direction} satisfy the target-value deflection rule~(4.15) of d'Antonio and Frangioni~\cite[p.~381]{dantoniofrangioni}.
+
+To make the correspondence with the cited framework explicit, in the notation of d'Antonio and Frangioni~\cite[eqs.~(1.2), (1.5), and (1.6), pp.~358--360]{dantoniofrangioni}, identify
+\[
+X=B_\rho,
+\qquad
+f=\Phi,
+\qquad
+x_k=\lambda_k,
+\qquad
+\bar g_k=g_k,
+\qquad
+v_k=d_{k-1}.
+\]
+Because the previous iteration selects $d_{k-1}=\widetilde d_{k-1}$, this choice of $v_k$ is one of the alternatives admitted in~(1.5). The new deflected direction is
+\[
+\widetilde d_k
+=\alpha_k\bar g_k+(1-\alpha_k)v_k,
+\]
+and the implementation selects the admissible unprojected alternative
+\[
+d_k=\widetilde d_k.
+\]
+Feasibility with respect to $B_\rho$ is enforced by the orthogonal projection in the iterate update. Therefore, the proposed update is covered by Theorem 4.6.
+Finally, the multiplier update is
+\begin{equation}
+\lambda_{k+1}
+=\proj_{B_\rho}\left(\lambda_k-\nu_kd_k\right).
+\label{eq:lambda-update}
+\end{equation}
+The primal upper bound is not used in either the stepsize or the deflection rule. It is used only to maintain a feasible primal incumbent and to compute the primal--dual stopping certificate.
+
+\subsection{Verification of the convergence theorem}
+The assumptions of Theorem~4.6 are verified as follows.
+
+\paragraph{Convex model and feasible set.}
+The function $\Phi$ is finite and convex.  The set $B_\rho$ is nonempty, closed and convex, and it contains the unconstrained minimizer by~\eqref{eq:lambda-opt-bound}.
+
+\paragraph{Exact oracle.}
+The $y$-subproblem is solved by~\eqref{eq:y-subproblem}, and every $x$-block is solved exactly by~\eqref{eq:x-subproblem}--\eqref{eq:block-oracle}.  Thus the oracle error in the notation of~\cite{dantoniofrangioni} is
+\begin{equation}
+\sigma_k=0\qquad\text{for every }k.
+\label{eq:zero-oracle-error}
+\end{equation}
+
+\paragraph{Bounded subgradients and directions.}
+Because the update projects onto $B_\rho$,
+\begin{align}
+\|g_k\|
+&=\left\|\frac12\lambda_k-Rx(\lambda_k)\right\|\\
+&\le\frac12\|\lambda_k\|+\|R\|_2\|x(\lambda_k)\|\\
+&\le\frac\rho2+\|R\|_2\sqrt m\\
+&\le\rho.
+\end{align}
+Furthermore, $d_1=g_1$, and~\eqref{eq:deflected-direction} is a convex combination because $0<\alpha_k\le1$.  By induction,
+\begin{equation}
+\|d_k\|\le\rho\qquad\text{for every }k.
+\label{eq:bounded-directions}
+\end{equation}
+This proves condition~(4.10) instead of assuming it.  The condition is relevant because the standard projected subgradient recursion contains $\nu_k^2\|d_k\|^2$; bounded directions together with $\sum_k\nu_k^2<\infty$ make the accumulated squared-step contribution finite.
+
+\paragraph{Stepsize, deflection and threshold conditions.}
+Equations~\eqref{eq:diminishing-step}--\eqref{eq:step-condition} satisfy condition~(4.1); equations~\eqref{eq:zeta}--\eqref{eq:deflected-direction} satisfy rule~(4.15); and~\eqref{eq:target-level} satisfies condition~(4.16).
+
+Consider first the infinite sequence obtained when the certified-gap stopping
+test and the iteration cap are disabled. For that sequence, all assumptions of
+Theorem~4.6 are satisfied. The theorem gives
+\[
+\Phi_{\mathrm{ref}}^{\infty}\le\Phi^*+\sigma^*.
+\]
+Here $\sigma^*=0$ by~\eqref{eq:zero-oracle-error}, while every record value is at least $\Phi^*$.  Hence
+\begin{equation}
+\Phi_{\mathrm{ref}}^k\longrightarrow\Phi^*.
+\label{eq:record-convergence}
+\end{equation}
+Equivalently, define
+\begin{equation}
+LB_k=\max_{1\le j\le k}\psi(\lambda_j)
+=-\Phi_{\mathrm{ref}}^k.
+\label{eq:dual-lb}
+\end{equation}
+Using strong duality,
+\begin{equation}
+LB_k\longrightarrow\psi^*=p^*.
+\label{eq:lb-convergence}
+\end{equation}
+The individual values $\psi(\lambda_k)$ need not increase monotonically.  The record sequence $LB_k$ is monotone by definition and is the sequence covered by the convergence statement.
+
+The cited theorem establishes asymptotic convergence but does not provide an explicit convergence rate for this variant.
+
+\subsection{Primal feasible upper bounds and stopping rule}
+
+Every Lagrangian vertex $x(\lambda_k)$ belongs to $\Kset$, and
+therefore
+\begin{equation}
+p^*\le f(x(\lambda_k)).
+\label{eq:vertex-ub}
+\end{equation}
+The implementation also forms the running average
+\begin{equation}
+\bar x_k
+=
+\frac1k\sum_{j=1}^{k}x(\lambda_j).
+\label{eq:average-x}
+\end{equation}
+Since $\Kset$ is convex, $\bar x_k\in\Kset$, so
+$f(\bar x_k)$ is another valid primal upper bound.
+
+Let
+\[
+\mathcal C_k
+=
+\{\bar x_0\}
+\cup
+\left\{
+x(\lambda_j),\bar x_j:
+1\le j\le k
+\right\}
+\]
+be the set of feasible primal candidates available after iteration
+$k$. The best feasible incumbent and the corresponding upper bound are
+defined by
+\begin{equation}
+x_{\mathrm{best},k}
+\in
+\argmin_{x\in\mathcal C_k}f(x),
+\qquad
+UB_k
+=
+f(x_{\mathrm{best},k})
+=
+\min\left\{
+f(\bar x_0),
+\min_{1\le j\le k}
+\left\{
+f(x(\lambda_j)),f(\bar x_j)
+\right\}
+\right\}.
+\label{eq:dual-phase-ub}
+\end{equation}
+Together with the record dual lower bound
+\[
+LB_k
+=
+\max_{1\le j\le k}\psi(\lambda_j),
+\]
+weak duality yields
+\begin{equation}
+LB_k\le p^*\le UB_k.
+\label{eq:certificate}
+\end{equation}
+Consequently, $UB_k-LB_k$ is a valid primal--dual optimality
+certificate. The upper bound is used only to maintain a feasible
+primal incumbent and to evaluate the stopping criterion; it is not
+used in the stepsize, the deflection rule, or the convergence proof
+of the dual method.
+
+After the dual loop, a conditional-gradient, or Frank--Wolfe, polishing phase is run from the best feasible incumbent $x_{\mathrm{best},k}$~\cite{frank1956algorithm}. For a feasible
+point $x$, let
+\[
+h=\nabla f(x)=2R^T(Rx)+q.
+\]
+The linear minimization oracle is
+\begin{equation}
+s
+\in
+\argmin_{z\in\Kset}h^Tz,
+\label{eq:fw-oracle}
+\end{equation}
+which again separates by blocks and requires one minimum search in
+each block. Define the conditional-gradient direction
+\[
+d=s-x.
+\]
+Because both $x$ and $s$ belong to $\Kset$, every update
+\[
+x^+=x+\gamma d,
+\qquad
+\gamma\in[0,1],
+\]
+remains feasible.
+
+The Frank--Wolfe gap at $x$ is
+\begin{equation}
+\Delta_{\mathrm{FW}}(x)
+=
+h^T(x-s)
+=
+-h^Td.
+\label{eq:fw-gap}
+\end{equation}
+Since $s$ minimizes $h^Tz$ over $\Kset$ and $x\in\Kset$, this
+quantity is nonnegative. Moreover, for every $z\in\Kset$, convexity
+gives
+\[
+f(x)-f(z)
+\le
+\nabla f(x)^T(x-z)
+\le
+\Delta_{\mathrm{FW}}(x),
+\]
+so the Frank--Wolfe gap is also a valid first-order optimality
+certificate for the polishing problem.
+
+Using $Q=R^TR$, let
+\[
+a=d^TQd=\|Rd\|^2.
+\]
+If $a>0$, exact line search along the feasible segment gives
+\begin{equation}
+\gamma^*
+=
+\proj_{[0,1]}
+\left(
+-\frac{h^Td}{2a}
+\right)
+=
+\proj_{[0,1]}
+\left(
+-\frac{\nabla f(x)^Td}{2d^TQd}
+\right).
+\label{eq:fw-line-search}
+\end{equation}
+If $a=0$, the objective is affine along the segment. In that case,
+the algorithm selects $\gamma=1$ when $h^Td<0$ and $\gamma=0$
+otherwise. Therefore, every polishing iteration preserves feasibility
+and cannot increase the primal objective value.
+
+The polishing phase terminates when
+\begin{equation}
+\Delta_{\mathrm{FW}}(x)
+\le
+\varepsilon_{\mathrm{FW}},
+\label{eq:fw-stop}
+\end{equation}
+or when the polishing iteration limit $T_{\mathrm{pol}}$ is reached.
+
+The dual loop terminates successfully when
+\begin{equation}
+\frac{UB_k-LB_k}
+{\max\{1,|UB_k|\}}
+\le
+\varepsilon.
+\label{eq:gap-stop}
+\end{equation}
+If the dual iteration limit $T_{\max}$ is reached first, the current
+valid lower and upper bounds are retained without claiming that the
+requested tolerance has been attained. A small subgradient norm alone
+is not used as a stopping criterion, because it does not provide the
+required primal--dual certificate.
+
+After the polishing phase, the best feasible incumbent and its upper
+bound are updated whenever the polished point has a smaller objective
+value. The final relative gap is then recomputed as
+\[
+\mathrm{gap}
+=
+\frac{UB-LB}{\max\{1,|UB|\}}.
+\]
+The history $\mathcal H$ records the iterations of the dual phase;
+the final returned values additionally include any improvement
+obtained during conditional-gradient polishing.
+
+\subsection{A1 pseudocode}
+
+\begin{breakablealgorithm}
+\caption{A1: target-value deflected dual subgradient method with
+conditional-gradient polishing}
+\label{alg:a1}
+\small
+\begin{algorithmic}
+
+\Require
+$R,q,\mathcal I=\{I_j\}_{j=1}^{m},
+T_{\max},\nu_0,p,\delta_0,\eta,\alpha_{\min},\varepsilon,
+T_{\mathrm{pol}},\varepsilon_{\mathrm{FW}}$
+
+\Ensure
+Feasible primal point $x_{\mathrm{best}}$, upper bound $UB$,
+lower bound $LB$, relative gap, and dual history $\mathcal H$
+
+\Statex
+\Statex \textbf{Phase I: target-value deflected dual method}
+
+\State $\rho\gets2\|R\|_F\sqrt{m}$
+\State $\lambda_1\gets0$
+\State $LB\gets-\infty$
+\State $\Phi_{\mathrm{ref}}\gets+\infty$
+\State $\mathcal H\gets[\,]$
+
+\State Initialize $\bar x_0$ by setting
+$(\bar x_0)_i\gets1/|I_j|$ for every $i\in I_j$
+\State $x_{\mathrm{best}}\gets\bar x_0$
+\State $UB\gets f(x_{\mathrm{best}})$
+
+\For{$k\gets1$ \textbf{to} $T_{\max}$}
+
+    \State $c_k\gets q+R^T\lambda_k$
+    \State $x_k\gets0$
+
+    \For{$j\gets1$ \textbf{to} $m$}
+        \State
+        $i_j\in\argmin_{i\in I_j}(c_k)_i$
+        \Comment{exact block oracle}
+        \State $(x_k)_{i_j}\gets1$
+    \EndFor
+
+    \State
+    $\displaystyle
+    \psi_k
+    \gets
+    -\frac14\|\lambda_k\|^2
+    +\sum_{j=1}^{m}(c_k)_{i_j}$
+
+    \State $\Phi_k\gets-\psi_k$
+    \State $g_k\gets\frac12\lambda_k-Rx_k$
+
+    \State $LB\gets\max\{LB,\psi_k\}$
+    \State
+    $\Phi_{\mathrm{ref}}
+    \gets
+    \min\{\Phi_{\mathrm{ref}},\Phi_k\}$
+
+    \State
+    $\displaystyle
+    \bar x_k
+    \gets
+    \frac{k-1}{k}\bar x_{k-1}
+    +\frac1k x_k$
+
+    \State $F_k\gets f(x_k)$
+    \State $\bar F_k\gets f(\bar x_k)$
+
+    \If{$F_k<UB$}
+        \State $UB\gets F_k$
+        \State $x_{\mathrm{best}}\gets x_k$
+    \EndIf
+
+    \If{$\bar F_k<UB$}
+        \State $UB\gets\bar F_k$
+        \State $x_{\mathrm{best}}\gets\bar x_k$
+    \EndIf
+
+    \State
+    $\displaystyle
+    \mathrm{gap}_k
+    \gets
+    \frac{UB-LB}{\max\{1,|UB|\}}$
+
+    \State
+    Append $(k,\psi_k,LB,UB,\mathrm{gap}_k)$
+    to $\mathcal H$
+
+    \If{$\mathrm{gap}_k\le\varepsilon$}
+        \State \textbf{break}
+    \EndIf
+
+    \If{$k=1$}
+        \State $\alpha_k\gets1$
+        \State $d_k\gets g_k$
+    \Else
+        \State
+        $\displaystyle
+        \delta_k\gets\frac{\delta_0}{k^\eta}$
+
+        \State
+        $\Phi_{\mathrm{lev}}^k
+        \gets
+        \Phi_{\mathrm{ref}}-\delta_k$
+
+        \State
+        $\displaystyle
+        \zeta_k
+        \gets
+        \frac{
+            \nu_{k-1}\|d_{k-1}\|^2
+        }{
+            \Phi_k-\Phi_{\mathrm{lev}}^k
+            +\nu_{k-1}\|d_{k-1}\|^2
+        }$
+
+        \State
+        $\alpha_k
+        \gets
+        \max\{\alpha_{\min},\zeta_k\}$
+
+        \State
+        $d_k
+        \gets
+        \alpha_k g_k+(1-\alpha_k)d_{k-1}$
+    \EndIf
+
+    \State
+    $\displaystyle
+    \nu_k\gets\frac{\nu_0}{k^p}$
+
+    \State
+    $z_k\gets\lambda_k-\nu_kd_k$
+
+    \State
+    $\lambda_{k+1}
+    \gets
+    \proj_{B_\rho}(z_k)$
+
+\EndFor
+
+\Statex
+\Statex \textbf{Phase II: conditional-gradient polishing}
+
+\State $x\gets x_{\mathrm{best}}$
+
+\For{$t\gets0$ \textbf{to} $T_{\mathrm{pol}}-1$}
+
+    \State
+    $h\gets2R^T(Rx)+q$
+
+    \State $s\gets0$
+
+    \For{$j\gets1$ \textbf{to} $m$}
+        \State
+        $\ell_j\in\argmin_{i\in I_j}h_i$
+        \Comment{linear minimization oracle}
+        \State $s_{\ell_j}\gets1$
+    \EndFor
+
+    \State $d^{\mathrm{FW}}\gets s-x$
+
+    \State
+    $\Delta_{\mathrm{FW}}
+    \gets
+    h^T(x-s)$
+
+    \If{$\Delta_{\mathrm{FW}}\le\varepsilon_{\mathrm{FW}}$}
+        \State \textbf{break}
+    \EndIf
+
+    \State
+    $a\gets\|Rd^{\mathrm{FW}}\|^2$
+
+    \If{$a>0$}
+        \State
+        $\displaystyle
+        \gamma
+        \gets
+        \proj_{[0,1]}
+        \left(
+        -\frac{h^Td^{\mathrm{FW}}}{2a}
+        \right)$
+    \Else
+        \If{$h^Td^{\mathrm{FW}}<0$}
+            \State $\gamma\gets1$
+        \Else
+            \State $\gamma\gets0$
+        \EndIf
+    \EndIf
+
+    \State
+    $x\gets x+\gamma d^{\mathrm{FW}}$
+
+    \State
+    $F\gets f(x)$
+
+    \If{$F<UB$}
+        \State $UB\gets F$
+        \State $x_{\mathrm{best}}\gets x$
+    \EndIf
+
+\EndFor
+
+\State
+$\displaystyle
+\mathrm{gap}
+\gets
+\frac{UB-LB}{\max\{1,|UB|\}}$
+
+\State
+\Return
+$x_{\mathrm{best}},UB,LB,\mathrm{gap},\mathcal H$
+
+\end{algorithmic}
+\end{breakablealgorithm}
+
+\subsection{Cost per iteration}
+
+In one iteration of the dual phase, the products
+$R^T\lambda_k$ and $Rx_k$ dominate the computational work. With
+sparse storage, each product costs $O(\nnz(R))$; for a dense matrix
+$R\in\R^{r\times n}$, each product costs $O(rn)$. The blockwise
+minimum search examines every component once and therefore costs
+$O(n)$. The target-value scalar calculations cost $O(1)$, while the
+projection onto $B_\rho$ costs $O(r)$. Consequently, one iteration
+of the dual phase costs
+\begin{equation}
+O(\nnz(R)+n+r)
+\label{eq:sparse-cost}
+\end{equation}
+in the sparse case and
+\[
+O(rn+n+r)
+\]
+in the dense case.
+
+In one iteration of the conditional-gradient polishing phase, the
+gradient
+\[
+\nabla f(x)=2R^T(Rx)+q
+\]
+requires the products $Rx$ and $R^T(Rx)$. Computing the line-search
+coefficient additionally requires $Rd$. Therefore, one polishing
+iteration has the same leading-order sparse complexity,
+\[
+O(\nnz(R)+n),
+\]
+and dense complexity
+\[
+O(rn+n).
+\]
+The memory requirement is dominated by the storage of $R$ and the
+current primal and dual vectors.
+
+The convergence theorem for the dual method is asymptotic and does
+not provide a worst-case iteration bound for this variant. The total
+running time therefore depends on the number of dual iterations
+performed before the certified-gap test or $T_{\max}$ is reached,
+together with at most $T_{\mathrm{pol}}$ conditional-gradient
+iterations.
+
+\section{A2: general-purpose solver}
+
+\subsection{Direct constrained formulation}
+
+Let $A\in\R^{m\times n}$ be the block-incidence matrix,
+\[
+A_{ki}=\begin{cases}1,&i\in I_k,\\0,&\text{otherwise.}\end{cases}
+\]
+Then A2 solves the original convex QP directly:
+\begin{equation}
+\min_{x\in\R^n}\;x^TQx+q^Tx,
+\qquad
+Ax=\mathbf 1,
+\qquad
+x\ge0.
+\label{eq:a2-formulation}
+\end{equation}
+The code supplies the exact objective and gradient \[ f(x)=\|Rx\|^2+q^Tx, \qquad \nabla f(x)=2R^T(Rx)+q, \] together with the linear equalities and nonnegativity bounds to SciPy's SLSQP implementation. SLSQP is a sequential quadratic programming method originally implemented by Kraft \cite{kraft1988slsqp}, while the software implementation used here is provided by SciPy~\cite{virtanen2020scipy}.
+
+\subsection{Initialization and solution validation}
+
+Since problem~(P) is convex, every feasible point satisfying the KKT
+conditions is globally optimal. The output of A2 is therefore
+validated through the objective value, the blockwise KKT residual
+defined in Section~1.1, the maximum block-sum violation, and the
+maximum nonnegativity violation.
+
+Two A2 configurations are used in the numerical experiments.
+
+\begin{itemize}
+    \item \textbf{A2-cold:} SLSQP is initialized independently of A1
+    at the uniform feasible point
+    \[
+    (x^{0}_{\mathrm{cold}})_i
+    =
+    \frac{1}{|I_k|},
+    \qquad i\in I_k,
+    \quad k=1,\ldots,m.
+    \]
+
+    \item \textbf{A2-warm:} SLSQP is initialized at the polished
+    feasible point returned by A1:
+    \[
+    x^{0}_{\mathrm{warm}}
+    =
+    x_{\mathrm{A1}}.
+    \]
+\end{itemize}
+
+Both configurations use exactly the same objective function, exact
+gradient, equality constraints, bound constraints, and SLSQP options.
+In particular, both use
+\[
+\texttt{ftol}=10^{-10}
+\qquad\text{and}\qquad
+T_{\mathrm{A2}}=800.
+\]
+Hence, the initial point is the only algorithmic difference between
+the two A2 runs.
+
+A2-cold measures the independent performance of the general-purpose
+solver. A2-warm measures the benefit of refining a solution already
+produced by A1. The wall-clock time of A2-warm alone contains only the
+refinement phase and excludes the cost of producing the initial point.
+For this reason, the report also considers the end-to-end pipeline
+time
+\begin{equation}
+t_{\mathrm{pipeline}}
+=
+t_{\mathrm{A1}} + t_{\mathrm{A2,warm}}.
+\label{eq:pipeline-time}
+\end{equation}
+
+The A2-warm time must therefore not be interpreted as the independent
+running time of A2 or compared directly with the total running time of
+A1 without also reporting~\eqref{eq:pipeline-time}.
+
+\subsection{A2 pseudocode}
+
+\begin{breakablealgorithm}
+\caption{A2: cold-start and A1 warm-start constrained solves}
+\label{alg:a2}
+\small
+\begin{algorithmic}
+
+\Require
+$R,q,\{I^j\}_{j=1}^{m}$,
+polished A1 solution $x^{A1}$,
+maximum iterations $T^{A2}_{\max}$,
+tolerance $\varepsilon_{A2}$
+
+\Ensure
+A2-cold result, A2-warm result, pipeline time, solver statuses,
+and residuals
+
+\State Build $A\in\R^{m\times n}$ with
+$A_{ji}=1$ for $i\in I^j$
+
+\State Construct the uniform feasible point $x^{\mathrm{unif}}$
+
+\For{$j=1,\ldots,m$}
+    \For{$i\in I^j$}
+        \State $(x^{\mathrm{unif}})_i \gets 1/|I^j|$
+    \EndFor
+\EndFor
+
+\State Define $f(x)=\|Rx\|^2+q^Tx$
+\State Define $\nabla f(x)=2R^T(Rx)+q$
+
+\State Call SLSQP from $x^{\mathrm{unif}}$ on
+$\min f(x)$ subject to $Ax=\mathbf{1}$ and $x\geq 0$
+
+\State Store the returned point $x^{A2,\mathrm{cold}}$,
+objective value, status, iterations, timing, and residuals
+
+\State Call SLSQP from $x^{A1}$ on
+$\min f(x)$ subject to $Ax=\mathbf{1}$ and $x\geq 0$
+
+\State Store the returned point $x^{A2,\mathrm{warm}}$,
+objective value, status, iterations, timing, and residuals
+
+\State Compute
+$t_{\mathrm{pipeline}}
+\gets
+t_{A1}+t_{A2,\mathrm{warm}}$
+
+\State \Return
+$x^{A2,\mathrm{cold}}$,
+$x^{A2,\mathrm{warm}}$,
+their objective values,
+statuses,
+iterations,
+timings,
+residuals,
+and $t_{\mathrm{pipeline}}$
+
+\end{algorithmic}
+\end{breakablealgorithm}
+
+\subsection{Computational cost}
+
+One objective evaluation requires $Rx$ and costs $O(\nnz(R)+n)$ in sparse arithmetic or $O(rn+n)$ for dense $R$. One gradient evaluation additionally computes $R^T(Rx)$ and has the same leading order. The block constraints cost $O(n)$ to evaluate. The total A2 cost also contains the dense linear-algebra work internal to SLSQP, which depends on the active set and cannot be summarized by a single problem-independent iteration bound. The numerical results report the number of SLSQP iterations,
+objective-function and gradient evaluations, and wall-clock time.
+
+\section{Implementation and experimental setup}
+
+\subsection{Code organization}
+
+The implementation is written in Python. NumPy is used for numerical linear algebra, while SciPy is used only by A2. The repository is organized as follows:
+\begin{lstlisting}
+code/
+  qpsimplex/
+    problem.py            model, PSD factorization, generation, save/load
+    dual_deflected.py     A1 target-value deflected dual method
+    primal_recovery.py    optional conditional-gradient polishing
+    a2_scipy.py           A2 general-purpose SLSQP solver
+    metrics.py            objective, feasibility and KKT residuals
+    experiments.py        reproducible comparison grid
+  scripts/
+    run_one.py            solve one generated or saved instance
+    run_experiments.py    reproduce the A1/A2 comparison
+    make_report_assets.py regenerate tables and figures
+    run_self_check.py     algebraic, theorem-rule and smoke checks
+  results/                generated CSV files and saved instances
+  report_assets/          generated LaTeX tables and PDF figures
+report.tex                this report
+\end{lstlisting}
+
+\subsection{Parameters}
+
+The main A1 configuration uses
+\[
+\nu_0=0.5,
+\qquad
+p=0.75,
+\qquad
+\delta_0=1,
+\qquad
+\eta=0.5,
+\qquad
+\alpha_{\min}=0.1,
+\qquad
+T_{\max}=5000.
+\]
+These values satisfy the theoretical conditions stated in
+Section~2. Their finite-iteration effect is examined in the parameter
+sensitivity experiment.
+
+For A2, both the cold-start and warm-start runs use SciPy SLSQP with
+the same settings:
+\[
+\texttt{ftol}=10^{-10},
+\qquad
+T_{\mathrm{A2}}=800.
+\]
+The cold-start run uses the uniform feasible point
+\[
+(x^0_{\mathrm{cold}})_i=\frac{1}{|I_k|},
+\qquad i\in I_k,
+\]
+whereas the warm-start run uses
+\[
+x^0_{\mathrm{warm}}=x_{\mathrm{A1}}.
+\]
+All remaining solver options, objective and gradient functions,
+constraints, and bounds are identical. Consequently, any difference
+between the two A2 runs is attributable to the initial point and to
+ordinary runtime variability.
+
+The reported wall-clock times are obtained from one execution of each
+solver configuration on each generated instance. Therefore, the timing
+results should be interpreted as implementation-level measurements on
+the current hardware rather than as precise performance estimates.
+This limitation is particularly relevant for the smallest instances,
+for which the A2 execution time is only a few milliseconds.
+
+The reported A1 time includes both the target-value deflected dual
+phase and the subsequent conditional-gradient polishing phase. The
+A2-cold and A2-warm times contain only the corresponding SLSQP calls.
+The end-to-end warm-start pipeline time is therefore computed as
+\[
+t_{\mathrm{pipeline}}
+=
+t_{\mathrm{A1}}+t_{\mathrm{A2,warm}}.
+\]
+
+\subsection{Instance generation}
+
+The numerical instances are generated through a factor
+$R\in\mathbb{R}^{r\times n}$, so that
+\[
+Q=R^TR
+\]
+is positive semidefinite by construction. Before applying the density
+mask, the entries are sampled independently according to
+\[
+R_{ji}\sim\mathcal{N}(0,1),
+\qquad
+q_i\sim\mathcal{N}(0,1).
+\]
+
+When the prescribed density is smaller than one, a random binary mask
+is applied to the entries of $R$. The resulting matrix is then scaled
+by
+\[
+\frac{1}{\sqrt{r\rho_R}},
+\]
+where $\rho_R$ denotes the target density. This scaling keeps the
+quadratic term at a comparable numerical magnitude across the tested
+families.
+
+The four instance families used in the reported experiments are:
+\begin{itemize}
+    \item \textbf{small dense}: $n=50$, $m=5$, block size $10$,
+    $r=20$, density $1.00$;
+
+    \item \textbf{medium dense}: $n=100$, $m=10$, block size $10$,
+    $r=35$, density $1.00$;
+
+    \item \textbf{medium sparse}: $n=150$, $m=15$, block size $10$,
+    $r=45$, density $0.20$;
+
+    \item \textbf{large sparse}: $n=160$, $m=20$, block size $8$,
+    $r=50$, density $0.12$.
+\end{itemize}
+
+Two independent random seeds are used for every family. The generated
+instances are stored in
+\texttt{code/results/data/}, so that all reported comparisons can be
+repeated on exactly the same numerical inputs.
+
+The labels ``medium sparse'' and ``large sparse'' refer to the zero
+pattern and target density of $R$. For portability, the current
+implementation still stores and processes the masked matrices as dense
+NumPy arrays. Therefore, the reported wall-clock times are based on
+dense linear algebra. The
+$O(\operatorname{nnz}(R))$ complexity discussed in
+Sections~2.7 and~3.4 refers to an implementation using an actual sparse
+matrix representation.
+
+\subsection{Reported metrics}
+
+For every test instance, the experiments report the following
+quantities:
+
+\begin{itemize}
+    \item the best feasible objective value produced by A1 after
+    conditional-gradient polishing;
+
+    \item the record dual lower bound of A1 and the relative
+    primal--dual certificate
+    \[
+    \operatorname{gap}_{\mathrm{A1}}
+    =
+    \frac{UB-LB}{\max\{1,|UB|\}};
+    \]
+
+    \item the objective values, iteration counts, solver statuses,
+    elapsed times, feasibility residuals, and blockwise KKT residuals
+    of A2-cold and A2-warm;
+
+    \item the relative objective discrepancies
+    \[
+    \Delta_{\mathrm{cold}}
+    =
+    \frac{
+    |f_{\mathrm{A1}}-f_{\mathrm{A2,cold}}|
+    }{
+    \max\{1,|f_{\mathrm{A2,cold}}|\}
+    },
+    \]
+    and
+    \[
+    \Delta_{\mathrm{warm}}
+    =
+    \frac{
+    |f_{\mathrm{A1}}-f_{\mathrm{A2,warm}}|
+    }{
+    \max\{1,|f_{\mathrm{A2,warm}}|\}
+    };
+    \]
+
+    \item the warm-start speedup
+    \begin{equation}
+    S_{\mathrm{warm}}
+    =
+    \frac{
+    t_{\mathrm{A2,cold}}
+    }{
+    t_{\mathrm{A2,warm}}
+    };
+    \label{eq:warm-speedup}
+    \end{equation}
+
+    \item the end-to-end A1--A2 pipeline time
+    \[
+    t_{\mathrm{pipeline}}
+    =
+    t_{\mathrm{A1}}+t_{\mathrm{A2,warm}};
+    \]
+
+    \item the pipeline-to-cold ratio
+    \begin{equation}
+    R_{\mathrm{pipeline}}
+    =
+    \frac{
+    t_{\mathrm{pipeline}}
+    }{
+    t_{\mathrm{A2,cold}}
+    }.
+    \label{eq:pipeline-ratio}
+    \end{equation}
+\end{itemize}
+
+A value $S_{\mathrm{warm}}>1$ means that warm-starting decreases the
+internal A2 refinement time. A value
+$R_{\mathrm{pipeline}}<1$ means that the complete A1--A2 pipeline is
+faster than independently running A2 from its default initial point.
+The quantities answer different questions and are therefore reported
+separately.
+
+\section{Numerical results}
+
+\subsection{Detailed A1--A2 comparison}
+
+Table~\ref{tab:detailed-comparison} reports the results for A1,
+independently run cold-start A2, and warm-start A2. The column labelled
+``pipeline'' reports the end-to-end time
+\[
+t_{\mathrm{pipeline}}
+=
+t_{\mathrm{A1}}+t_{\mathrm{A2,warm}},
+\]
+whereas the warm-start speedup is defined as
+\[
+S_{\mathrm{warm}}
+=
+\frac{t_{\mathrm{A2,cold}}}
+     {t_{\mathrm{A2,warm}}}.
+\]
+
+\begin{table}[htbp]
+    \centering
+    \caption{Detailed comparison of A1, cold-start A2, and warm-start
+    A2. The pipeline time is
+    $t_{\mathrm{A1}}+t_{\mathrm{A2,warm}}$, while the warm-start
+    speedup is
+    $t_{\mathrm{A2,cold}}/t_{\mathrm{A2,warm}}$.}
+    \label{tab:detailed-comparison}
+    \resizebox{\textwidth}{!}{%
+        \input{code/report_assets/results_table.tex}
+    }
+\end{table}
+
+Across the tested instances, A2-cold and A2-warm reach essentially the
+same objective values. Hence, the initialization mainly affects the
+computational effort rather than the final solution reached.
+
+The comparison between A1 and A2-cold is the appropriate independent
+algorithm comparison, because neither method uses the output of the
+other. In contrast, the comparison between A2-cold and A2-warm isolates
+the effect of the starting point. The pipeline time measures the actual
+end-to-end cost when A1 is run in order to initialize A2.
+
+The largest absolute relative objective discrepancy between A1 and
+A2-cold is
+\[
+2.21\times 10^{-5},
+\]
+while the largest final A1 relative primal--dual certificate is
+\[
+4.73\times 10^{-5}.
+\]
+The A1 points are feasible to machine precision, and their largest
+reported blockwise KKT residual is
+\[
+1.91\times 10^{-4}.
+\]
+
+Only one A1 run reaches the requested $10^{-5}$ certificate before the
+iteration limit. The remaining runs correctly report the
+\texttt{max\_iter} status together with valid lower and upper bounds,
+rather than claiming convergence to the requested tolerance.
+
+\subsection{Aggregated timing and scaling}
+
+Table~\ref{tab:aggregate-performance} summarizes the average
+performance by instance family. The reported quantities distinguish
+the independent comparison between A1 and A2-cold, the effect of
+warm-starting on the SLSQP phase, and the complete cost of the
+A1--A2 warm-start pipeline.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Average computational performance by instance family.
+    A2-cold denotes an independent SLSQP run from the uniform feasible
+    point. A2-warm denotes only the SLSQP refinement started from the
+    polished A1 solution. The pipeline time is
+    $t_{\mathrm{A1}}+t_{\mathrm{A2,warm}}$.}
+    \label{tab:aggregate-performance}
+    \resizebox{\textwidth}{!}{%
+        \input{code/report_assets/aggregate_table.tex}
+    }
+\end{table}
+
+\paragraph{Independent comparison.}
+A1 must be compared with A2-cold when the two methods are evaluated as
+independent solvers. The column labelled ``cold/A1'' reports
+\[
+\frac{t_{\mathrm{A2,cold}}}{t_{\mathrm{A1}}}.
+\]
+On all tested instance families, this ratio is smaller than one.
+Therefore, under the current implementation, hardware, stopping rules,
+and experiment grid, independently run A2-cold has a lower measured
+wall-clock time than A1.
+
+This timing difference is consistent with the implementations. A1
+performs up to $5000$ structured dual iterations and subsequently runs
+a conditional-gradient polishing phase, whereas SLSQP terminates after
+a substantially smaller number of iterations on the tested instances.
+The reported A1 time also includes the polishing phase.
+
+\paragraph{Effect of warm-starting.}
+The warm-start speedup is defined as
+\[
+S_{\mathrm{warm}}
+=
+\frac{t_{\mathrm{A2,cold}}}
+     {t_{\mathrm{A2,warm}}}.
+\]
+The reported values are larger than one for all tested families.
+Hence, starting SLSQP from the polished A1 point reduces the internal
+A2 refinement time. The warm start is therefore computationally useful
+when the A1 solution is already available.
+
+\paragraph{End-to-end pipeline cost.}
+The A2-warm time alone excludes the cost of producing the A1 initial
+point. The complete cost of using A1 specifically to initialize A2 is
+\[
+t_{\mathrm{pipeline}}
+=
+t_{\mathrm{A1}}+t_{\mathrm{A2,warm}}.
+\]
+The column labelled ``pipeline/cold'' reports
+\[
+\frac{t_{\mathrm{pipeline}}}
+     {t_{\mathrm{A2,cold}}}.
+\]
+This ratio is larger than one for every tested family. Consequently,
+although warm-starting reduces the SLSQP refinement time, the complete
+A1--A2 pipeline is slower than independently running A2-cold on the
+current experiment grid.
+
+The cold-start experiment therefore changes the interpretation of the
+original warm-start-only comparison. Under the reported experimental
+conditions, A2-cold has the lowest measured wall-clock time. A1's
+distinguishing advantage is not speed on these instances, but the
+valid dual lower bound and primal--dual optimality certificate that it
+provides.
+
+Because the smallest A2 measurements are only a few milliseconds and
+each configuration is timed once, the numerical ratios should not be
+interpreted as general performance or complexity claims.
+
+Figure~\ref{fig:objective-difference} shows the absolute relative
+objective discrepancy between A1 and independently run A2-cold.
+Figure~\ref{fig:runtime-comparison} compares the four relevant timing
+quantities.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.82\textwidth]
+    {code/report_assets/figures/relative_difference.pdf}
+    \caption{Absolute relative objective difference between A1 and
+    independently run cold-start A2.}
+    \label{fig:objective-difference}
+\end{figure}
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.85\textwidth]
+    {code/report_assets/figures/time_scaling.pdf}
+    \caption{Wall-clock times for A1, independently run A2-cold,
+    the A2-only warm-start refinement, and the end-to-end
+    A1--A2 pipeline.}
+    \label{fig:runtime-comparison}
+\end{figure}
+
+\subsection{Dual bounds and deflection behaviour}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\textwidth]{convergence_bounds.pdf}
+\caption{Record dual lower bound and best feasible upper bound on a representative medium dense instance.}
+\label{fig:bounds}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\textwidth]{convergence_gap.pdf}
+\caption{Relative primal--dual certificate for the same instance.}
+\label{fig:certificate}
+\end{figure}
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=0.72\textwidth]{deflection_steps.pdf}
+\caption{Diminishing stepsize $\nu_k$ and target-value deflection coefficient $\alpha_k$.}
+\label{fig:deflection-steps}
+\end{figure}
+
+The theorem concerns the record dual values, not monotonicity of each raw dual value. The plots therefore display $LB_k$. The feasible upper bound is produced by a separate primal-recovery mechanism and may improve at a different speed.
+
+\subsection{Projection diagnostics}
+
+The projection onto $B_\rho$ is included to guarantee that the
+multiplier sequence remains in a bounded set containing a dual
+optimum. Consequently, the subgradients and deflected directions are
+uniformly bounded, as required by the convergence theorem.
+
+The recorded multiplier norms remain below the radius $\rho$ on the
+tested instances. This confirms that every stored iterate satisfies
+the imposed ball constraint. However, the current implementation does
+not separately record the norm of every unprojected trial point or the
+number of iterations at which the projection changes the trial point.
+Therefore, no numerical claim is made here about how often the
+projection is active.
+
+Regardless of its observed numerical activity, the projection remains
+essential to the theoretical analysis because it provides an explicit
+bounded feasible set for the dual iteration.
+
+\subsection{Parameter sensitivity}
+
+The parameter-sensitivity experiment is performed on one fixed medium
+dense instance. Only the A1 algorithmic parameters are varied, while
+the problem data, iteration limits, polishing procedure, and A2
+reference solution are kept unchanged.
+
+In this experiment, independently run A2-cold is used as the reference
+solution. No initial point is supplied to SLSQP, so A2 uses its default
+uniform feasible point. Therefore, the reference solution is
+independent of the output of A1 and does not benefit from an A1
+warm start.
+
+The tested A1 configurations vary the initial stepsize $\nu_0$, the
+stepsize exponent $p$, and the minimum deflection coefficient
+$\alpha_{\min}$. All tested configurations satisfy the convergence
+restrictions
+\[
+\nu_0>0,
+\qquad
+\frac{1}{2}<p\leq 1,
+\qquad
+0<\alpha_{\min}\leq 1.
+\]
+
+Table~\ref{tab:parameter-sensitivity} reports the relative objective
+difference with respect to A2-cold, the final A1 primal--dual
+certificate, and the blockwise KKT residual.
+
+\begin{table}[htbp]
+    \centering
+    \caption{Sensitivity on one fixed medium dense instance. Every
+    tested setting satisfies the convergence restrictions. The A2
+    reference is independently run A2-cold from the uniform feasible
+    point.}
+    \label{tab:parameter-sensitivity}
+    \resizebox{\textwidth}{!}{%
+        \input{code/report_assets/parameter_table.tex}
+    }
+\end{table}
+
+In Table~\ref{tab:parameter-sensitivity}, the column labelled
+``rel. diff. vs A2'' refers specifically to the relative objective
+difference with respect to A2-cold:
+\[
+\Delta_{\mathrm{cold}}
+=
+\frac{
+f_{\mathrm{A1}}-f_{\mathrm{A2,cold}}
+}{
+\max\{1,|f_{\mathrm{A2,cold}}|\}
+}.
+\]
+The label is retained because it is generated automatically by the
+current report-asset script; throughout this section, ``A2'' in that
+column means A2-cold.
+
+All tested configurations produce objective values close to the
+A2-cold reference solution. The absolute relative objective
+differences remain of order $10^{-5}$ or smaller. The corresponding
+KKT residuals are also small, indicating that the polished A1 points
+are close to satisfying the first-order optimality conditions.
+
+The results show that the algorithmic parameters mainly affect the
+finite-iteration primal--dual certificate rather than the final
+objective value. In particular, the tested value
+\[
+\nu_0=0.5
+\]
+produces the smallest certificate among the three tested initial
+stepsizes. The smaller value $\nu_0=0.2$ gives slower progress within
+the fixed iteration budget, while the larger value $\nu_0=1.0$ leads
+to a somewhat larger final objective discrepancy and KKT residual.
+
+The tested values of the stepsize exponent $p$ also produce similar
+final objective values, but different primal--dual certificates.
+This is consistent with the role of $p$ in controlling the rate at
+which the stepsize
+\[
+\nu_k=\frac{\nu_0}{k^p}
+\]
+decreases. A smaller value of $p$ preserves larger steps for longer,
+whereas a larger value decreases the steps more rapidly.
+
+Increasing $\alpha_{\min}$ from $0.1$ to $0.3$ changes the minimum
+weight assigned to the current subgradient in the deflected direction.
+On this test instance, the change has only a limited effect on the
+objective value, certificate, and KKT residual.
+
+Figure~\ref{fig:parameter-nu0} shows the effect of the initial
+stepsize $\nu_0$ on the final relative primal--dual certificate.
+
+\begin{figure}[htbp]
+    \centering
+    \includegraphics[width=0.75\textwidth]
+    {code/report_assets/figures/parameter_nu0.pdf}
+    \caption{Effect of the initial stepsize $\nu_0$ on the final
+    finite-iteration primal--dual certificate for one fixed medium
+    dense instance.}
+    \label{fig:parameter-nu0}
+\end{figure}
+
+The sensitivity experiment is not intended to change the mathematical
+model or to identify universally optimal parameters. It evaluates only
+the finite-iteration behaviour of A1 on one fixed instance. The
+baseline values
+\[
+\nu_0=0.5,
+\qquad
+p=0.75,
+\qquad
+\alpha_{\min}=0.1
+\]
+are retained because they provide a comparatively small final
+certificate and stable numerical behaviour on the tested instance,
+not because they are claimed to be theoretically optimal for all
+problems.
+
+\subsection{Native PSD input check}
+
+The main experiments generate the quadratic matrix through a factor
+$R$, so that $Q=R^TR$ is positive semidefinite by construction.
+Nevertheless, the implementation also accepts a symmetric positive
+semidefinite matrix $Q$ directly. In this case,
+\texttt{SimplexQP.from\_Q} reconstructs a factor $R$ using the
+symmetric eigendecomposition described in~(5), retaining only the
+eigenvalues larger than the prescribed numerical tolerance.
+
+A dedicated PSD-input validation is implemented in
+\texttt{scripts/make\_report\_assets.py}. It constructs an instance
+from a factor $R$, reconstructs a second representation from the
+corresponding matrix $Q=R^TR$, and compares
+\[
+x^TQx+q^Tx
+\qquad\text{and}\qquad
+\|Rx\|_2^2+q^Tx
+\]
+on twenty randomly generated feasible points. The maximum absolute
+objective discrepancy is written to
+\texttt{code/results/psd\_factorization\_check.txt}. The observed
+discrepancy is at the level of floating-point roundoff, confirming that
+the native-$Q$ representation and the factorized representation define
+the same quadratic objective up to numerical precision.
+
+Separately, \texttt{scripts/run\_self\_check.py} verifies the same
+factorization on the uniform feasible point before performing the A1
+and A2 consistency checks.
+
+\section{Discussion}
+
+Dualizing the linking equality $y=Rx$ makes every A1 Lagrangian
+relaxation exactly solvable. For a fixed multiplier, the
+$y$-subproblem has a closed-form solution, while the $x$-subproblem
+reduces to one minimum reduced-cost search on each simplex block.
+Thus, A1 satisfies the no-solver requirement. Directly dualizing the
+simplex equalities would instead leave a nonnegative quadratic
+optimization problem inside the oracle.
+
+The theoretical guarantee concerns the record dual lower-bound
+sequence. Under the assumptions verified in Section~2, this sequence
+converges asymptotically to the primal optimum. The result does not
+imply monotonicity of the individual dual values or provide a
+worst-case convergence rate for the implemented deflected
+subgradient variant.
+
+Every reported A1 upper bound is obtained from an explicitly feasible
+point. Together with the record dual lower bound, this gives the valid
+certificate
+\[
+\frac{UB-LB}{\max\{1,|UB|\}}.
+\]
+Because the exact Lagrangian solutions are simplex vertices, running
+averages and conditional-gradient polishing are used to obtain better
+primal points when the optimum is not a vertex. In the experiments,
+most A1 runs reach the iteration limit before satisfying the requested
+certificate, but they still return valid lower and upper bounds without
+claiming convergence.
+
+The A2 experiments separate two different questions. A2-cold starts
+from the uniform feasible point and is the appropriate reference for
+comparing A1 and A2 as independent solvers. A2-warm starts from the
+polished A1 solution and measures the benefit of initialization. On the
+tested instances, warm-starting reduces the SLSQP refinement time, but
+the complete cost
+\[
+t_{\mathrm{A1}}+t_{\mathrm{A2,warm}}
+\]
+is larger than the A2-cold time on every tested family. Hence, running
+A1 solely to initialize A2 is not computationally advantageous on this
+experiment grid.
+
+The methods nevertheless provide different information. A2-cold has
+the lowest measured wall-clock time, whereas A1 additionally returns a
+valid dual lower bound and a primal--dual certificate. A2-warm remains
+useful when an A1 solution has already been computed for certification
+or analysis and only an additional primal refinement is desired.
+
+These timing conclusions are specific to the current implementation,
+hardware, solver settings, stopping rules, and test instances. Since
+each configuration is timed once and some A2 runs last only a few
+milliseconds, the reported ratios are implementation-level
+observations rather than general performance or complexity claims.
+
+\section{Conclusion}
+
+A1 is a solver-free Lagrangian dual decomposition for convex quadratic
+programmes over a product of simplices. Its oracle is solved exactly,
+the target-value deflected subgradient update satisfies the assumptions
+of the cited convergence theorem, and projection onto an explicitly
+constructed ball guarantees bounded multipliers and directions. A1
+returns a feasible primal point, a valid dual lower bound, and a
+primal--dual optimality certificate.
+
+A2 applies SciPy's SLSQP routine directly to the original constrained
+problem. To evaluate the effect of initialization fairly, it is run
+both from the default uniform feasible point (A2-cold) and from the
+polished A1 solution (A2-warm). The two configurations reach
+essentially the same objective values, showing that initialization
+mainly affects computational effort.
+
+On the tested instances, A2-cold has the lowest measured wall-clock
+time. Warm-starting reduces the A2 refinement time, but the complete
+pipeline
+\[
+t_{\mathrm{A1}}+t_{\mathrm{A2,warm}}
+\]
+is slower than A2-cold on every tested family. Therefore, A1 should not
+be run solely to initialize A2. Its main advantage is instead the
+certified primal--dual information that SLSQP does not directly
+provide.
+
+The final comparison therefore distinguishes three roles: A2-cold is
+the faster standalone implementation on the tested instances, A1
+provides certification without a general-purpose solver, and A2-warm
+offers an optional refinement when an A1 solution is already
+available. These conclusions are empirical and specific to the
+reported implementation and experimental setup.
+
+\appendix
+
+\section{Reproducibility}
+
+The Python commands are executed from the \path{code/} directory, while \path{report.tex} is compiled from the project root. A Conda environment can be created with:
+\begin{lstlisting}[language=bash]
+conda create -n nonml5 python=3.11 -y
+conda activate nonml5
+conda install -c conda-forge numpy scipy pandas matplotlib -y
+\end{lstlisting}
+
+From the project root, reproduce the numerical results with:
+\begin{lstlisting}[language=bash]
+cd code
+python scripts/run_self_check.py
+python scripts/run_experiments.py
+python scripts/make_report_assets.py
+cd ..
+\end{lstlisting}
+The scripts regenerate the saved instances and CSV files under \path{code/results/}, and the LaTeX tables and PDF figures under \path{code/report_assets/}.
+
+\section{Main formulas implemented in A1}
+
+\begin{align*}
+\psi(\lambda)
+&=-\frac14\|\lambda\|^2
+ +\sum_k\min_{i\in I_k}\{q_i+(R^T\lambda)_i\},\\
+g(\lambda)
+&=\frac12\lambda-Rx(\lambda),\\
+\nu_k
+&=\nu_0/k^p,\\
+\alpha_k
+&=\max\left\{\alpha_{\min},
+\frac{\nu_{k-1}\|d_{k-1}\|^2}
+{\Phi_k-\Phi_{\mathrm{lev}}^k+\nu_{k-1}\|d_{k-1}\|^2}
+\right\},\\
+d_k
+&=\alpha_kg_k+(1-\alpha_k)d_{k-1},\\
+\lambda_{k+1}
+&=\proj_{B_\rho}(\lambda_k-\nu_kd_k).
+\end{align*}
+
+\section{Native PSD-matrix input}
+
+\begin{lstlisting}[language=Python]
+from qpsimplex.problem import SimplexQP
+from qpsimplex.dual_deflected import DeflectedSubgradientSolver, DualOptions
+
+problem = SimplexQP.from_Q(Q, q, blocks, name="my_instance")
+options = DualOptions(
+    max_iter=5000,
+    nu0=0.5,
+    step_power=0.75,
+    delta0=1.0,
+    delta_power=0.5,
+    alpha_min=0.1,
+)
+result = DeflectedSubgradientSolver(options).solve(problem)
+\end{lstlisting}
+
+\begin{thebibliography}{99}
+
+\bibitem{boyd2004convex}
+S.~Boyd and L.~Vandenberghe,
+\emph{Convex Optimization}.
+Cambridge, U.K.: Cambridge University Press, 2004.
+
+\bibitem{dantoniofrangioni}
+G.~d'Antonio and A.~Frangioni,
+``Convergence Analysis of Deflected Conditional Approximate
+Subgradient Methods,''
+\emph{SIAM Journal on Optimization},
+vol.~20, no.~1, pp.~357--386, 2009.
+doi: 10.1137/080718814.
+
+\bibitem{frank1956algorithm}
+M.~Frank and P.~Wolfe,
+``An Algorithm for Quadratic Programming,''
+\emph{Naval Research Logistics Quarterly},
+vol.~3, nos.~1--2, pp.~95--110, 1956.
+doi: 10.1002/nav.3800030109.
+
+\bibitem{kraft1988slsqp}
+D.~Kraft,
+\emph{A Software Package for Sequential Quadratic Programming}.
+Technical Report DFVLR-FB 88-28,
+DLR German Aerospace Center, Germany, 1988.
+
+\bibitem{virtanen2020scipy}
+P.~Virtanen et al.,
+``SciPy 1.0: Fundamental Algorithms for Scientific Computing in
+Python,''
+\emph{Nature Methods},
+vol.~17, pp.~261--272, 2020.
+doi: 10.1038/s41592-019-0686-2.
+
+\end{thebibliography}
 
 \end{document}

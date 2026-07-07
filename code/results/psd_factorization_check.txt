@@ -1,0 +1,3 @@
+rank(original R)=8
+rank(reconstructed R)=8
+max objective discrepancy on feasible samples=1.554e-15
